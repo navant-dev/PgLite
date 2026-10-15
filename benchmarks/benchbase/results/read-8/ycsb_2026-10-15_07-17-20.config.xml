@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<configuration>
+  <ddlpath>/Users/nav/Documents/GitHub/PgLite/benchmarks/benchbase/schema.sql</ddlpath>
+  <isolation>TRANSACTION_REPEATABLE_READ</isolation>
+  <batchsize>64</batchsize>
+  <scalefactor>100</scalefactor>
+  <fieldSize>100</fieldSize>
+  <skewFactor>0.99</skewFactor>
+  <terminals>8</terminals>
+  <loaderThreads>1</loaderThreads>
+  <randomSeed>42</randomSeed>
+  <retries>1</retries>
+  <works>
+    <work>
+      <time>30</time>
+      <warmup>10</warmup>
+      <rate>unlimited</rate>
+      <weights>100,0,0,0,0,0</weights>
+    </work>
+  </works>
+  <transactiontypes>
+    <transactiontype>
+      <name>ReadRecord</name>
+    </transactiontype>
+    <transactiontype>
+      <name>InsertRecord</name>
+    </transactiontype>
+    <transactiontype>
+      <name>ScanRecord</name>
+    </transactiontype>
+    <transactiontype>
+      <name>UpdateRecord</name>
+    </transactiontype>
+    <transactiontype>
+      <name>DeleteRecord</name>
+    </transactiontype>
+    <transactiontype>
+      <name>ReadModifyWriteRecord</name>
+    </transactiontype>
+  </transactiontypes>
+</configuration>

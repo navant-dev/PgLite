@@ -1,0 +1,62 @@
+[INFO ] 2026-10-15 13:22:13,452 [main]  com.oltpbenchmark.DBWorkload main - ======================================================================
+
+Benchmark:                       YCSB {com.oltpbenchmark.benchmarks.ycsb.YCSBBenchmark}
+Configuration:                   /Users/nav/Documents/GitHub/PgLite/benchmarks/benchbase/configs/read-8.xml
+Type:                            POSTGRES
+Driver:                          org.postgresql.Driver
+URL:                             jdbc:postgresql://127.0.0.1:55433/pglite?sslmode=disable&assumeMinServerVersion=9.0&ApplicationName=benchbase&reWriteBatchedInserts=true
+Isolation:                       TRANSACTION_REPEATABLE_READ
+Batch Size:                      64
+DDL Path:                        /Users/nav/Documents/GitHub/PgLite/benchmarks/benchbase/schema.sql
+Loader Threads:                  1
+Session Setup File:              null
+Scale Factor:                    100.0
+Terminals:                       8
+New Connection Per Txn:          false
+Reconnect on Connection Failure: false
+
+[INFO ] 2026-10-15 13:22:13,453 [main]  com.oltpbenchmark.DBWorkload main - ======================================================================
+[INFO ] 2026-10-15 13:22:13,606 [main]  com.oltpbenchmark.DBWorkload runWorkload - Creating 8 virtual terminals...
+[INFO ] 2026-10-15 13:22:13,679 [main]  com.oltpbenchmark.DBWorkload runWorkload - Launching the YCSB Benchmark with 1 Phase...
+[INFO ] 2026-10-15 13:22:13,684 [main]  com.oltpbenchmark.ThreadBench runRateLimitedMultiPhase - [0;1mPHASE START[0;0m :: [Workload=YCSB] [Serial=false] [Time=30] [WarmupTime=10] [Rate=unlimited] [Arrival=REGULAR] [Ratios=[100.0, 0.0, 0.0, 0.0, 0.0, 0.0]] [ActiveWorkers=8]
+[INFO ] 2026-10-15 13:22:23,692 [main]  com.oltpbenchmark.ThreadBench runRateLimitedMultiPhase - [0;1mMEASURE[0;0m :: Warmup complete, starting measurements.
+[INFO ] 2026-10-15 13:22:54,692 [main]  com.oltpbenchmark.ThreadBench runRateLimitedMultiPhase - [0;1mTERMINATE[0;0m :: Waiting for all terminals to finish ..
+[INFO ] 2026-10-15 13:22:54,697 [Thread-8]  com.oltpbenchmark.ThreadBench run - Starting WatchDogThread
+[INFO ] 2026-10-15 13:22:54,809 [main]  com.oltpbenchmark.DBWorkload runWorkload - ======================================================================
+[INFO ] 2026-10-15 13:22:54,809 [main]  com.oltpbenchmark.DBWorkload runWorkload - Rate limited reqs/s: Results(state=EXIT, nanoSeconds=30999808845, measuredRequests=252490) = 8144.888933427227 requests/sec (throughput), 10782.195518405946 requests/sec (goodput)
+[ERROR] 2026-10-15 13:22:54,817 [main]  com.oltpbenchmark.api.collectors.DBCollector <init> - Error while collecting DB parameters: ERROR: unsupported: expression
+[INFO ] 2026-10-15 13:22:54,837 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output Raw data into file: ycsb_2026-10-15_13-22-54.raw.csv
+[INFO ] 2026-10-15 13:22:56,605 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output samples into file: ycsb_2026-10-15_13-22-54.samples.csv
+[INFO ] 2026-10-15 13:22:56,663 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output summary data into file: ycsb_2026-10-15_13-22-54.summary.json
+[INFO ] 2026-10-15 13:22:56,676 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output DBMS parameters into file: ycsb_2026-10-15_13-22-54.params.json
+[INFO ] 2026-10-15 13:22:56,676 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output benchmark config into file: ycsb_2026-10-15_13-22-54.config.xml
+[INFO ] 2026-10-15 13:22:56,718 [main]  com.oltpbenchmark.DBWorkload writeOutputs - Output results into file: ycsb_2026-10-15_13-22-54.results.csv with window size 5
+[INFO ] 2026-10-15 13:22:56,821 [main]  com.oltpbenchmark.DBWorkload writeHistograms - ======================================================================
+[INFO ] 2026-10-15 13:22:56,822 [main]  com.oltpbenchmark.DBWorkload writeHistograms - Workload Histograms:
+
+[0;1mCompleted Transactions:[0;0m
+com.oltpbenchmark.benchmarks.ycsb.procedures.ReadRecord/01                       [334246] ********************************************************************************
+com.oltpbenchmark.benchmarks.ycsb.procedures.InsertRecord/02                     [     0] 
+com.oltpbenchmark.benchmarks.ycsb.procedures.ScanRecord/03                       [     0] 
+com.oltpbenchmark.benchmarks.ycsb.procedures.UpdateRecord/04                     [     0] 
+com.oltpbenchmark.benchmarks.ycsb.procedures.DeleteRecord/05                     [     0] 
+com.oltpbenchmark.benchmarks.ycsb.procedures.ReadModifyWriteRecord/06            [     0] 
+
+[0;1mAborted Transactions:[0;0m
+<EMPTY>
+
+[0;1mRejected Transactions (Server Retry):[0;0m
+<EMPTY>
+
+[0;1mRejected Transactions (Retry Different):[0;0m
+<EMPTY>
+
+[0;1mUnexpected SQL Errors:[0;0m
+<EMPTY>
+
+[0;1mUnknown Status Transactions:[0;0m
+<EMPTY>
+
+
+[INFO ] 2026-10-15 13:22:56,822 [main]  com.oltpbenchmark.DBWorkload writeHistograms - ======================================================================
+[INFO ] 2026-10-15 13:22:56,825 [main]  com.oltpbenchmark.DBWorkload main - Histograms JSON Data: /private/tmp/pglite-benchbase-fixed-results/read-8.histograms.json

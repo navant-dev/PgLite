@@ -1,0 +1,52 @@
+[
+  {
+    "workload": "read-1",
+    "measured_requests": 104434,
+    "elapsed_seconds": 31.001996406,
+    "throughput": 3368.621769783454,
+    "p50_us": 257,
+    "p95_us": 560,
+    "p99_us": 816,
+    "failures_including_warmup": 0
+  },
+  {
+    "workload": "read-8",
+    "measured_requests": 249287,
+    "elapsed_seconds": 30.993756698,
+    "throughput": 8043.135991194195,
+    "p50_us": 963,
+    "p95_us": 1369,
+    "p99_us": 1632,
+    "failures_including_warmup": 0
+  },
+  {
+    "workload": "mixed-8",
+    "measured_requests": 233804,
+    "elapsed_seconds": 30.000030217,
+    "throughput": 7793.458816835165,
+    "p50_us": 976,
+    "p95_us": 1433,
+    "p99_us": 1981,
+    "failures_including_warmup": 201
+  },
+  {
+    "workload": "read-32",
+    "measured_requests": 249122,
+    "elapsed_seconds": 30.001459587,
+    "throughput": 8303.66266939718,
+    "p50_us": 3811,
+    "p95_us": 5184,
+    "p99_us": 5891,
+    "failures_including_warmup": 0
+  },
+  {
+    "workload": "scan-8",
+    "measured_requests": 6800,
+    "elapsed_seconds": 31.001256376,
+    "throughput": 219.34594900045093,
+    "p50_us": 35207,
+    "p95_us": 71031,
+    "p99_us": 85043,
+    "failures_including_warmup": 0
+  }
+]

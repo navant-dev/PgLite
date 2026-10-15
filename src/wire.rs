@@ -246,8 +246,17 @@ impl QueryParser for Backend {
             .iter()
             .map(|t| t.as_ref().map(kind).transpose())
             .collect::<PgWireResult<Vec<_>>>()?;
+        let statements = sql::parse(&query).map_err(pg_error)?;
+        if statements.len() == 1 && sql::is_write(&statements[0]) {
+            let active = self.blocking(|s| Ok(s.tx == Tx::Active)).await?;
+            if active {
+                // Planning reads the catalog on this transaction's connection.
+                // Admit a first write before those reads establish its snapshot.
+                // An existing snapshot is retained and can still fail with 40001.
+                self.admit_write().await?;
+            }
+        }
         self.blocking(move |s| {
-            let statements = sql::parse(&query)?;
             if statements.is_empty() {
                 return Ok(None);
             }
@@ -333,17 +342,11 @@ impl SimpleQueryHandler for Backend {
     where
         C: ClientInfo + Unpin + Send + Sync,
     {
-        if sql::parse(query).map_err(pg_error)?.iter().any(|s| {
-            matches!(
-                s,
-                sqlparser::ast::Statement::Insert(_)
-                    | sqlparser::ast::Statement::Update { .. }
-                    | sqlparser::ast::Statement::Delete(_)
-                    | sqlparser::ast::Statement::CreateTable(_)
-                    | sqlparser::ast::Statement::CreateIndex(_)
-                    | sqlparser::ast::Statement::Drop { .. }
-            )
-        }) {
+        if sql::parse(query)
+            .map_err(pg_error)?
+            .iter()
+            .any(sql::is_write)
+        {
             self.admit_write().await?;
         }
         let query = query.to_owned();
@@ -566,7 +569,18 @@ impl ExtendedQueryHandler for Backend {
                 Kind::Bool => p
                     .parameter::<bool>(i, &ty)?
                     .map(|v| Value::Integer(v as i64)),
-                Kind::Text => p.parameter::<String>(i, &ty)?.map(Value::Text),
+                // Bind text is raw UTF-8 in either format, not an SQL literal.
+                // pgwire's String text decoder unescapes doubled apostrophes.
+                Kind::Text => p.parameters[i]
+                    .as_ref()
+                    .map(|bytes| {
+                        std::str::from_utf8(bytes)
+                            .map(|s| Value::Text(s.to_owned()))
+                            .map_err(|_| {
+                                pg_error(DbError::new("22021", "invalid UTF-8 text parameter"))
+                            })
+                    })
+                    .transpose()?,
                 Kind::Bytes => p.parameter::<Vec<u8>>(i, &ty)?.map(Value::Blob),
             };
             values.push(v.unwrap_or(Value::Null));

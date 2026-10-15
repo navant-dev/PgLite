@@ -298,6 +298,31 @@ async fn queued_writers_do_not_starve_commit_and_stale_snapshots_still_fail() {
             .unwrap(),
         1
     );
+    // Like JDBC before its prepare threshold: BEGIN, Parse UPDATE, then Execute.
+    // Parse reads schema metadata and must not create a pre-admission snapshot.
+    a.batch_execute("BEGIN").await.unwrap();
+    let update = a.prepare("UPDATE t SET value=$1 WHERE id=1").await.unwrap();
+    let other = client(addr).await;
+    let pending = tokio::spawn(async move {
+        other
+            .execute("UPDATE t SET value='other' WHERE id=2", &[])
+            .await
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    assert!(
+        !pending.is_finished(),
+        "transactional write planning must retain admission"
+    );
+    a.execute(&update, &[&"prepared"]).await.unwrap();
+    a.batch_execute("COMMIT").await.unwrap();
+    assert_eq!(
+        tokio::time::timeout(std::time::Duration::from_secs(2), pending)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap(),
+        1
+    );
     a.batch_execute("BEGIN; SELECT * FROM t").await.unwrap();
     let c = client(addr).await;
     c.execute("UPDATE t SET value='new' WHERE id=1", &[])
@@ -348,4 +373,121 @@ async fn queued_writers_do_not_starve_commit_and_stale_snapshots_still_fail() {
         result.unwrap();
     }
     server.abort();
+}
+
+#[derive(Debug)]
+struct TextFormat<'a>(&'a [u8]);
+impl tokio_postgres::types::ToSql for TextFormat<'_> {
+    fn to_sql(
+        &self,
+        _ty: &tokio_postgres::types::Type,
+        out: &mut bytes::BytesMut,
+    ) -> Result<tokio_postgres::types::IsNull, Box<dyn std::error::Error + Sync + Send>> {
+        out.extend_from_slice(self.0);
+        Ok(tokio_postgres::types::IsNull::No)
+    }
+    fn accepts(ty: &tokio_postgres::types::Type) -> bool {
+        matches!(
+            *ty,
+            tokio_postgres::types::Type::TEXT | tokio_postgres::types::Type::VARCHAR
+        )
+    }
+    fn encode_format(&self, _ty: &tokio_postgres::types::Type) -> tokio_postgres::types::Format {
+        tokio_postgres::types::Format::Text
+    }
+    tokio_postgres::types::to_sql_checked!();
+}
+
+#[tokio::test]
+async fn bound_text_preserves_bytes_in_both_wire_formats() {
+    let d = tempfile::tempdir().unwrap();
+    let config = Arc::new(Config::new(d.path().join("text.db")));
+    engine::initialize(&config).unwrap();
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let server = tokio::spawn(async move {
+        let (socket, _) = listener.accept().await.unwrap();
+        pgwire::tokio::process_socket(
+            socket,
+            None,
+            Handlers(Arc::new(Backend::new(Session::open(config).unwrap()))),
+        )
+        .await
+        .unwrap();
+    });
+    let (c, conn) = tokio_postgres::connect(
+        &format!(
+            "host=127.0.0.1 port={} user=test sslmode=disable",
+            addr.port()
+        ),
+        NoTls,
+    )
+    .await
+    .unwrap();
+    let conn = tokio::spawn(conn);
+    c.batch_execute("CREATE TABLE t(id INT PRIMARY KEY, body TEXT); INSERT INTO t VALUES(1,NULL)")
+        .await
+        .unwrap();
+    let update = c.prepare("UPDATE t SET body=$1 WHERE id=1").await.unwrap();
+    for value in [
+        "a''b",
+        "''''",
+        "'quoted'",
+        "a\\b\\nc",
+        "",
+        " \tline\n",
+        "こんにちは🙂",
+    ] {
+        c.execute(&update, &[&TextFormat(value.as_bytes())])
+            .await
+            .unwrap();
+        assert_eq!(
+            c.query_one("SELECT body FROM t WHERE id=1", &[])
+                .await
+                .unwrap()
+                .get::<_, String>(0),
+            value
+        );
+        c.execute(&update, &[&value]).await.unwrap();
+        assert_eq!(
+            c.query_one("SELECT body FROM t WHERE id=1", &[])
+                .await
+                .unwrap()
+                .get::<_, String>(0),
+            value
+        );
+    }
+    c.execute(&update, &[&None::<TextFormat<'_>>])
+        .await
+        .unwrap();
+    assert_eq!(
+        c.query_one("SELECT body FROM t WHERE id=1", &[])
+            .await
+            .unwrap()
+            .get::<_, Option<String>>(0),
+        None
+    );
+    assert_eq!(
+        c.execute(&update, &[&TextFormat(&[0xff])])
+            .await
+            .unwrap_err()
+            .code()
+            .unwrap()
+            .code(),
+        "22021"
+    );
+    // SQL literals still obey SQL quoting rules; the fix must be limited to Bind values.
+    c.batch_execute("UPDATE t SET body='a''b' WHERE id=1")
+        .await
+        .unwrap();
+    assert_eq!(
+        c.query_one("SELECT body FROM t WHERE id=1", &[])
+            .await
+            .unwrap()
+            .get::<_, String>(0),
+        "a'b"
+    );
+    drop(c);
+    conn.await.unwrap().unwrap();
+    server.await.unwrap();
 }

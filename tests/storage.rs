@@ -347,3 +347,43 @@ fn rolled_back_schema_cookie_reuse_cannot_revive_stale_plan() {
     );
     assert!(rows(&mut s, "SELECT * FROM t").is_empty());
 }
+
+#[tokio::test]
+async fn checkpoint_waits_for_writer_and_reclaims_wal() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut config = pglite_server::engine::Config::new(dir.path().join("checkpoint-queue.db"));
+    config.max_wal_bytes = 1024 * 1024;
+    let config = std::sync::Arc::new(config);
+    pglite_server::engine::initialize(&config).unwrap();
+    let session = pglite_server::engine::Session::open(config.clone()).unwrap();
+    let permit = config.writer.clone().acquire_owned().await.unwrap();
+    session.conn.execute_batch("BEGIN IMMEDIATE; CREATE TABLE checkpoint_test(id INTEGER PRIMARY KEY, body BLOB); INSERT INTO checkpoint_test VALUES(1,zeroblob(700000));").unwrap();
+    let task = tokio::spawn(pglite_server::engine::checkpoint_admitted(config.clone()));
+    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    assert!(
+        !task.is_finished(),
+        "checkpoint must queue behind the active writer"
+    );
+    session.conn.execute_batch("COMMIT").unwrap();
+    drop(permit);
+    let (_, pages, done) = tokio::time::timeout(std::time::Duration::from_secs(2), task)
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    assert_eq!(pages, done);
+    assert_eq!(
+        std::fs::metadata(format!("{}-wal", config.path.display()))
+            .unwrap()
+            .len(),
+        0
+    );
+    assert_eq!(
+        session
+            .conn
+            .query_row("SELECT length(body) FROM checkpoint_test", [], |r| r
+                .get::<_, i64>(0))
+            .unwrap(),
+        700000
+    );
+}

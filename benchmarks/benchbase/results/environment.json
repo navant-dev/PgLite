@@ -1,0 +1,27 @@
+{
+  "date": "2026-10-15",
+  "os": "macOS 15.7.7 (24G720)",
+  "cpu": "Intel Core i5-8257U @ 1.40 GHz",
+  "logical_cpus": 8,
+  "ram_bytes": 8589934592,
+  "pglite_commit": "f0e789580985c6bb71cef1c77700f3256a2982bd",
+  "server_sha256": "98b65f3a0c11dece9a36cc4447d12474a32ed90d2151e4dc2f279f3b0b7cd421",
+  "benchbase_commit": "33c00473807ebd49304d114a6d769d2d2b2bbb34",
+  "java": "Temurin 25.0.4.1+1; compiled with --release 23",
+  "jdbc": "PostgreSQL 42.7.4",
+  "rows": 100000,
+  "database_bytes_before_measurements": 468131840,
+  "fields_per_row": 10,
+  "characters_per_field": 100,
+  "cache_kib_per_connection": 2048,
+  "max_clients": 32,
+  "wal_soft_limit_bytes": 67108864,
+  "durability": "SQLite WAL synchronous FULL",
+  "configured_warmup_seconds": 10,
+  "configured_measurement_seconds": 30,
+  "notes": [
+    "Warm OS cache; dataset smaller than 8 GiB host RAM.",
+    "Client and server on same host; one run per workload.",
+    "read-1/read-8 used adapter before metadata socket lifetime fix; timed procedures identical."
+  ]
+}

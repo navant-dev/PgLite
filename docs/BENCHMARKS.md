@@ -39,3 +39,9 @@ Mixed workload: **200/200 writes committed, zero contention errors**, without tr
 The final stripped executable is **5,611,184 bytes** (5.35 MiB). The deployment test measured **346 ms** from process launch to readiness and **3,204 KiB** of idle resident memory. These are single local observations; startup, RSS, and throughput vary with hardware, OS caching, and host load. The earlier and final runs are not a controlled throughput comparison.
 
 The complete optimized run passed **25 tests**, including the explicitly enabled performance test. Formatting and Clippy with warnings denied also passed. The test total includes the subprocess crash helper. The CI workflow is authored but has not been run on GitHub/Linux.
+
+## Subsequent BenchBase validation
+
+The longer [modified BenchBase run](../benchmarks/benchbase/RESULTS.md) found mixed-workload write failures and a JDBC text-parameter preservation bug. The earlier short smoke measurements above do not establish correctness or reliability for this workload. See that report for the reproducer, raw results, and limitations.
+
+Those defects are now fixed. The [fresh BenchBase rerun](../benchmarks/benchbase/FIXES.md) completed all workloads with zero transaction failures and validated all one million text fields. The original numbers remain above as historical observations.

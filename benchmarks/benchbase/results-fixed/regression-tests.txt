@@ -1,0 +1,79 @@
+   Compiling pglite-server v0.1.0 (/Users/nav/Documents/GitHub/PgLite)
+    Finished `release` profile [optimized] target(s) in 1m 39s
+     Running unittests src/lib.rs (target/release/deps/pglite_server-abd730c9af97a887)
+
+running 1 test
+test wire::tests::cancellation_targets_the_active_connection_and_secret ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.01s
+
+     Running unittests src/main.rs (target/release/deps/pglite_server-15fc284498c1dabb)
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+
+     Running tests/crash.rs (target/release/deps/crash-9287df312f73da51)
+
+running 2 tests
+test crash_child ... ok
+
+running 1 test
+test committed_wal_survives_abrupt_exit_and_uncommitted_is_discarded ... ok
+
+test result: ok. 2 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+
+     Running tests/deployment.rs (target/release/deps/deployment-9813885f42f9dbd3)
+
+running 3 tests
+test remote_listener_is_rejected ... ok
+test starts_quickly_and_prevents_second_owner ... ok
+test transaction_expiry_closes_connection_and_rolls_back ... ok
+
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.61s
+
+     Running tests/performance.rs (target/release/deps/performance-73813a01164c22f7)
+
+running 1 test
+test disk_backed_read_and_write_smoke ... ok
+
+test result: ok. 1 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 2.10s
+
+     Running tests/storage.rs (target/release/deps/storage-805571a654b49e45)
+
+running 15 tests
+test rejected_sql_does_not_escape_frontend ... ok
+test atomic_batches_constraints_and_rollback ... ok
+test limits_and_expiry ... ok
+test cached_plan_uses_snapshot_and_invalidates_after_ddl ... ok
+test disk_reopen_and_ddl_rollback ... ok
+test crud_types_and_indexes ... ok
+test savepoint_rollback_is_not_silently_treated_as_full_rollback ... ok
+test result_budget_rolls_back_batch ... ok
+test rolled_back_schema_cookie_reuse_cannot_revive_stale_plan ... ok
+test unsupported_options_and_negative_pagination ... ok
+test snapshot_sees_old_rows_and_index_keys ... ok
+test writer_conflict_and_no_dirty_reads ... ok
+test checkpoint_waits_for_writer_and_reclaims_wal ... ok
+test wal_pressure_recovers_after_checkpoint ... ok
+test randomized_index_and_table_scan_agree ... ok
+
+test result: ok. 15 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+     Running tests/wire.rs (target/release/deps/wire-553914e761a703ff)
+
+running 5 tests
+test fragmented_protocol_and_invalid_bind_recover_after_sync ... ok
+test cursors_type_inference_and_schema_invalidation ... ok
+test driver_prepared_crud_transactions_and_binary_types ... ok
+test bound_text_preserves_bytes_in_both_wire_formats ... ok
+test queued_writers_do_not_starve_commit_and_stale_snapshots_still_fail ... ok
+
+test result: ok. 5 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.13s
+
+   Doc-tests pglite_server
+
+running 0 tests
+
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

@@ -1,0 +1,7 @@
+case=0 equal=true expected_hex=61272762 actual_hex=61272762
+case=1 equal=true expected_hex=706c61696e actual_hex=706c61696e
+case=2 equal=true expected_hex=615c62 actual_hex=615c62
+case=3 equal=true expected_hex=2771756f74656427 actual_hex=2771756f74656427
+case=4 equal=true expected_hex=615c6e62 actual_hex=615c6e62
+case=5 equal=true expected_hex=615c5c62 actual_hex=615c5c62
+case=6 equal=true expected_hex= actual_hex=

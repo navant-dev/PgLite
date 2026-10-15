@@ -1,0 +1,13 @@
+{
+  "integrity_check": [
+    "ok"
+  ],
+  "rows": 100000,
+  "key_range": [
+    0,
+    99999
+  ],
+  "invalid_field_rows": 0,
+  "database_bytes": 468131840,
+  "passed": true
+}

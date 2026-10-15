@@ -843,3 +843,17 @@ fn pagination(b: &mut Binder<'_>, e: &Expr, params: &mut Vec<usize>) -> Result<S
     }
     Ok(b.expr(e, Some(Kind::Int8))?.0)
 }
+
+/// Statements whose execution (and transactional catalog planning) needs writer admission.
+pub fn is_write(statement: &sqlparser::ast::Statement) -> bool {
+    use sqlparser::ast::Statement;
+    matches!(
+        statement,
+        Statement::Insert(_)
+            | Statement::Update { .. }
+            | Statement::Delete(_)
+            | Statement::CreateTable(_)
+            | Statement::CreateIndex(_)
+            | Statement::Drop { .. }
+    )
+}

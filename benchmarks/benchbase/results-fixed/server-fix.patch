@@ -1,0 +1,342 @@
+diff --git a/src/engine.rs b/src/engine.rs
+index 6b166c4..1d9f54a 100644
+--- a/src/engine.rs
++++ b/src/engine.rs
+@@ -533,3 +533,20 @@ pub fn checkpoint(path: &Path, max_wal_bytes: u64) -> Result<(i64, i64, i64)> {
+     }
+     Ok(stats)
+ }
++
++/// Serialize checkpoint truncation with server writes. Keep the permit inside the
++/// blocking job so cancellation of its async caller cannot release it prematurely.
++pub async fn checkpoint_admitted(config: Arc<Config>) -> Result<(i64, i64, i64)> {
++    let permit = config
++        .writer
++        .clone()
++        .acquire_owned()
++        .await
++        .map_err(|_| DbError::new("57P01", "writer admission closed"))?;
++    tokio::task::spawn_blocking(move || {
++        let _permit = permit;
++        checkpoint(&config.path, config.max_wal_bytes)
++    })
++    .await
++    .map_err(|e| DbError::new("XX000", e.to_string()))?
++}
+diff --git a/src/main.rs b/src/main.rs
+index ec67422..42716ea 100644
+--- a/src/main.rs
++++ b/src/main.rs
+@@ -99,16 +99,12 @@ async fn serve(config: Arc<Config>, addr: SocketAddr, max_clients: usize) -> std
+     let listener = TcpListener::bind(addr).await?;
+     let permits = Arc::new(Semaphore::new(max_clients));
+     let mut tasks = tokio::task::JoinSet::new();
+-    let path = config.path.clone();
+-    let max_wal_bytes = config.max_wal_bytes;
++    let checkpoint_config = config.clone();
+     let checkpoint = tokio::spawn(async move {
+         loop {
+             tokio::time::sleep(Duration::from_secs(1)).await;
+-            let path = path.clone();
+-            match tokio::task::spawn_blocking(move || engine::checkpoint(&path, max_wal_bytes))
+-                .await
+-            {
+-                Ok(Ok(_)) => {}
++            match engine::checkpoint_admitted(checkpoint_config.clone()).await {
++                Ok(_) => {}
+                 result => eprintln!("checkpoint failed: {result:?}"),
+             }
+         }
+diff --git a/src/sql.rs b/src/sql.rs
+index 1f08b5a..61f7b82 100644
+--- a/src/sql.rs
++++ b/src/sql.rs
+@@ -843,3 +843,17 @@ fn pagination(b: &mut Binder<'_>, e: &Expr, params: &mut Vec<usize>) -> Result<S
+     }
+     Ok(b.expr(e, Some(Kind::Int8))?.0)
+ }
++
++/// Statements whose execution (and transactional catalog planning) needs writer admission.
++pub fn is_write(statement: &sqlparser::ast::Statement) -> bool {
++    use sqlparser::ast::Statement;
++    matches!(
++        statement,
++        Statement::Insert(_)
++            | Statement::Update { .. }
++            | Statement::Delete(_)
++            | Statement::CreateTable(_)
++            | Statement::CreateIndex(_)
++            | Statement::Drop { .. }
++    )
++}
+diff --git a/src/wire.rs b/src/wire.rs
+index e9135a2..d6e3b58 100644
+--- a/src/wire.rs
++++ b/src/wire.rs
+@@ -246,8 +246,17 @@ impl QueryParser for Backend {
+             .iter()
+             .map(|t| t.as_ref().map(kind).transpose())
+             .collect::<PgWireResult<Vec<_>>>()?;
++        let statements = sql::parse(&query).map_err(pg_error)?;
++        if statements.len() == 1 && sql::is_write(&statements[0]) {
++            let active = self.blocking(|s| Ok(s.tx == Tx::Active)).await?;
++            if active {
++                // Planning reads the catalog on this transaction's connection.
++                // Admit a first write before those reads establish its snapshot.
++                // An existing snapshot is retained and can still fail with 40001.
++                self.admit_write().await?;
++            }
++        }
+         self.blocking(move |s| {
+-            let statements = sql::parse(&query)?;
+             if statements.is_empty() {
+                 return Ok(None);
+             }
+@@ -333,17 +342,11 @@ impl SimpleQueryHandler for Backend {
+     where
+         C: ClientInfo + Unpin + Send + Sync,
+     {
+-        if sql::parse(query).map_err(pg_error)?.iter().any(|s| {
+-            matches!(
+-                s,
+-                sqlparser::ast::Statement::Insert(_)
+-                    | sqlparser::ast::Statement::Update { .. }
+-                    | sqlparser::ast::Statement::Delete(_)
+-                    | sqlparser::ast::Statement::CreateTable(_)
+-                    | sqlparser::ast::Statement::CreateIndex(_)
+-                    | sqlparser::ast::Statement::Drop { .. }
+-            )
+-        }) {
++        if sql::parse(query)
++            .map_err(pg_error)?
++            .iter()
++            .any(sql::is_write)
++        {
+             self.admit_write().await?;
+         }
+         let query = query.to_owned();
+@@ -566,7 +569,18 @@ impl ExtendedQueryHandler for Backend {
+                 Kind::Bool => p
+                     .parameter::<bool>(i, &ty)?
+                     .map(|v| Value::Integer(v as i64)),
+-                Kind::Text => p.parameter::<String>(i, &ty)?.map(Value::Text),
++                // Bind text is raw UTF-8 in either format, not an SQL literal.
++                // pgwire's String text decoder unescapes doubled apostrophes.
++                Kind::Text => p.parameters[i]
++                    .as_ref()
++                    .map(|bytes| {
++                        std::str::from_utf8(bytes)
++                            .map(|s| Value::Text(s.to_owned()))
++                            .map_err(|_| {
++                                pg_error(DbError::new("22021", "invalid UTF-8 text parameter"))
++                            })
++                    })
++                    .transpose()?,
+                 Kind::Bytes => p.parameter::<Vec<u8>>(i, &ty)?.map(Value::Blob),
+             };
+             values.push(v.unwrap_or(Value::Null));
+diff --git a/tests/storage.rs b/tests/storage.rs
+index 5752aeb..d8327bb 100644
+--- a/tests/storage.rs
++++ b/tests/storage.rs
+@@ -347,3 +347,43 @@ fn rolled_back_schema_cookie_reuse_cannot_revive_stale_plan() {
+     );
+     assert!(rows(&mut s, "SELECT * FROM t").is_empty());
+ }
++
++#[tokio::test]
++async fn checkpoint_waits_for_writer_and_reclaims_wal() {
++    let dir = tempfile::tempdir().unwrap();
++    let mut config = pglite_server::engine::Config::new(dir.path().join("checkpoint-queue.db"));
++    config.max_wal_bytes = 1024 * 1024;
++    let config = std::sync::Arc::new(config);
++    pglite_server::engine::initialize(&config).unwrap();
++    let session = pglite_server::engine::Session::open(config.clone()).unwrap();
++    let permit = config.writer.clone().acquire_owned().await.unwrap();
++    session.conn.execute_batch("BEGIN IMMEDIATE; CREATE TABLE checkpoint_test(id INTEGER PRIMARY KEY, body BLOB); INSERT INTO checkpoint_test VALUES(1,zeroblob(700000));").unwrap();
++    let task = tokio::spawn(pglite_server::engine::checkpoint_admitted(config.clone()));
++    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
++    assert!(
++        !task.is_finished(),
++        "checkpoint must queue behind the active writer"
++    );
++    session.conn.execute_batch("COMMIT").unwrap();
++    drop(permit);
++    let (_, pages, done) = tokio::time::timeout(std::time::Duration::from_secs(2), task)
++        .await
++        .unwrap()
++        .unwrap()
++        .unwrap();
++    assert_eq!(pages, done);
++    assert_eq!(
++        std::fs::metadata(format!("{}-wal", config.path.display()))
++            .unwrap()
++            .len(),
++        0
++    );
++    assert_eq!(
++        session
++            .conn
++            .query_row("SELECT length(body) FROM checkpoint_test", [], |r| r
++                .get::<_, i64>(0))
++            .unwrap(),
++        700000
++    );
++}
+diff --git a/tests/wire.rs b/tests/wire.rs
+index 20c7673..bf633b4 100644
+--- a/tests/wire.rs
++++ b/tests/wire.rs
+@@ -298,6 +298,31 @@ async fn queued_writers_do_not_starve_commit_and_stale_snapshots_still_fail() {
+             .unwrap(),
+         1
+     );
++    // Like JDBC before its prepare threshold: BEGIN, Parse UPDATE, then Execute.
++    // Parse reads schema metadata and must not create a pre-admission snapshot.
++    a.batch_execute("BEGIN").await.unwrap();
++    let update = a.prepare("UPDATE t SET value=$1 WHERE id=1").await.unwrap();
++    let other = client(addr).await;
++    let pending = tokio::spawn(async move {
++        other
++            .execute("UPDATE t SET value='other' WHERE id=2", &[])
++            .await
++    });
++    tokio::time::sleep(std::time::Duration::from_millis(25)).await;
++    assert!(
++        !pending.is_finished(),
++        "transactional write planning must retain admission"
++    );
++    a.execute(&update, &[&"prepared"]).await.unwrap();
++    a.batch_execute("COMMIT").await.unwrap();
++    assert_eq!(
++        tokio::time::timeout(std::time::Duration::from_secs(2), pending)
++            .await
++            .unwrap()
++            .unwrap()
++            .unwrap(),
++        1
++    );
+     a.batch_execute("BEGIN; SELECT * FROM t").await.unwrap();
+     let c = client(addr).await;
+     c.execute("UPDATE t SET value='new' WHERE id=1", &[])
+@@ -349,3 +374,120 @@ async fn queued_writers_do_not_starve_commit_and_stale_snapshots_still_fail() {
+     }
+     server.abort();
+ }
++
++#[derive(Debug)]
++struct TextFormat<'a>(&'a [u8]);
++impl tokio_postgres::types::ToSql for TextFormat<'_> {
++    fn to_sql(
++        &self,
++        _ty: &tokio_postgres::types::Type,
++        out: &mut bytes::BytesMut,
++    ) -> Result<tokio_postgres::types::IsNull, Box<dyn std::error::Error + Sync + Send>> {
++        out.extend_from_slice(self.0);
++        Ok(tokio_postgres::types::IsNull::No)
++    }
++    fn accepts(ty: &tokio_postgres::types::Type) -> bool {
++        matches!(
++            *ty,
++            tokio_postgres::types::Type::TEXT | tokio_postgres::types::Type::VARCHAR
++        )
++    }
++    fn encode_format(&self, _ty: &tokio_postgres::types::Type) -> tokio_postgres::types::Format {
++        tokio_postgres::types::Format::Text
++    }
++    tokio_postgres::types::to_sql_checked!();
++}
++
++#[tokio::test]
++async fn bound_text_preserves_bytes_in_both_wire_formats() {
++    let d = tempfile::tempdir().unwrap();
++    let config = Arc::new(Config::new(d.path().join("text.db")));
++    engine::initialize(&config).unwrap();
++    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
++    let addr = listener.local_addr().unwrap();
++    let server = tokio::spawn(async move {
++        let (socket, _) = listener.accept().await.unwrap();
++        pgwire::tokio::process_socket(
++            socket,
++            None,
++            Handlers(Arc::new(Backend::new(Session::open(config).unwrap()))),
++        )
++        .await
++        .unwrap();
++    });
++    let (c, conn) = tokio_postgres::connect(
++        &format!(
++            "host=127.0.0.1 port={} user=test sslmode=disable",
++            addr.port()
++        ),
++        NoTls,
++    )
++    .await
++    .unwrap();
++    let conn = tokio::spawn(conn);
++    c.batch_execute("CREATE TABLE t(id INT PRIMARY KEY, body TEXT); INSERT INTO t VALUES(1,NULL)")
++        .await
++        .unwrap();
++    let update = c.prepare("UPDATE t SET body=$1 WHERE id=1").await.unwrap();
++    for value in [
++        "a''b",
++        "''''",
++        "'quoted'",
++        "a\\b\\nc",
++        "",
++        " \tline\n",
++        "こんにちは🙂",
++    ] {
++        c.execute(&update, &[&TextFormat(value.as_bytes())])
++            .await
++            .unwrap();
++        assert_eq!(
++            c.query_one("SELECT body FROM t WHERE id=1", &[])
++                .await
++                .unwrap()
++                .get::<_, String>(0),
++            value
++        );
++        c.execute(&update, &[&value]).await.unwrap();
++        assert_eq!(
++            c.query_one("SELECT body FROM t WHERE id=1", &[])
++                .await
++                .unwrap()
++                .get::<_, String>(0),
++            value
++        );
++    }
++    c.execute(&update, &[&None::<TextFormat<'_>>])
++        .await
++        .unwrap();
++    assert_eq!(
++        c.query_one("SELECT body FROM t WHERE id=1", &[])
++            .await
++            .unwrap()
++            .get::<_, Option<String>>(0),
++        None
++    );
++    assert_eq!(
++        c.execute(&update, &[&TextFormat(&[0xff])])
++            .await
++            .unwrap_err()
++            .code()
++            .unwrap()
++            .code(),
++        "22021"
++    );
++    // SQL literals still obey SQL quoting rules; the fix must be limited to Bind values.
++    c.batch_execute("UPDATE t SET body='a''b' WHERE id=1")
++        .await
++        .unwrap();
++    assert_eq!(
++        c.query_one("SELECT body FROM t WHERE id=1", &[])
++            .await
++            .unwrap()
++            .get::<_, String>(0),
++        "a'b"
++    );
++    drop(c);
++    conn.await.unwrap().unwrap();
++    server.await.unwrap();
++}

@@ -533,3 +533,20 @@ pub fn checkpoint(path: &Path, max_wal_bytes: u64) -> Result<(i64, i64, i64)> {
     }
     Ok(stats)
 }
+
+/// Serialize checkpoint truncation with server writes. Keep the permit inside the
+/// blocking job so cancellation of its async caller cannot release it prematurely.
+pub async fn checkpoint_admitted(config: Arc<Config>) -> Result<(i64, i64, i64)> {
+    let permit = config
+        .writer
+        .clone()
+        .acquire_owned()
+        .await
+        .map_err(|_| DbError::new("57P01", "writer admission closed"))?;
+    tokio::task::spawn_blocking(move || {
+        let _permit = permit;
+        checkpoint(&config.path, config.max_wal_bytes)
+    })
+    .await
+    .map_err(|e| DbError::new("XX000", e.to_string()))?
+}

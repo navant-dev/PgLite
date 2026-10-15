@@ -99,16 +99,12 @@ async fn serve(config: Arc<Config>, addr: SocketAddr, max_clients: usize) -> std
     let listener = TcpListener::bind(addr).await?;
     let permits = Arc::new(Semaphore::new(max_clients));
     let mut tasks = tokio::task::JoinSet::new();
-    let path = config.path.clone();
-    let max_wal_bytes = config.max_wal_bytes;
+    let checkpoint_config = config.clone();
     let checkpoint = tokio::spawn(async move {
         loop {
             tokio::time::sleep(Duration::from_secs(1)).await;
-            let path = path.clone();
-            match tokio::task::spawn_blocking(move || engine::checkpoint(&path, max_wal_bytes))
-                .await
-            {
-                Ok(Ok(_)) => {}
+            match engine::checkpoint_admitted(checkpoint_config.clone()).await {
+                Ok(_) => {}
                 result => eprintln!("checkpoint failed: {result:?}"),
             }
         }

@@ -36,3 +36,7 @@ The single-writer architecture remains appropriate for a read-heavy initial work
 ## Final local verification
 
 The optimized suite passed 25 tests including the performance smoke benchmark. The executable measured 5.35 MiB, 346 ms to readiness, and 3,204 KiB idle RSS on this host. The 95/5 mixed workload committed all 200 writes without conflicts. See [BENCHMARKS.md](BENCHMARKS.md) and the saved [verification output](verification.txt) for methodology and limitations.
+
+## BenchBase regression fixes
+
+Bound TEXT/VARCHAR parameters now preserve raw UTF-8 without SQL-literal unescaping. Checkpoints share writer admission, and preparing a write within an explicit transaction acquires admission before catalog reads. Genuine stale snapshots still fail with `40001`. The optimized suite now passes 27 tests. A fresh BenchBase rerun completed 15,788 mixed-workload updates with no failures and validated all one million text fields; see [verification and results](../benchmarks/benchbase/FIXES.md).

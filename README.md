@@ -61,7 +61,7 @@ Unsupported operations return errors. In particular: no joins, aggregations, ari
 
 ## Transaction behavior
 
-Transactions see a stable snapshot and their own writes. Index changes and row changes commit atomically. One writer can be active at a time. The server admits writers through a bounded FIFO queue. Short autocommit writes wait asynchronously for their turn; explicit write transactions retain admission until COMMIT or ROLLBACK. Writes based on an older snapshot can still conflict even when they touch unrelated rows.
+Transactions see a stable snapshot and their own writes. Index changes and row changes commit atomically. One writer can be active at a time. The server admits writers through a bounded FIFO queue. Checkpoints use the same admission queue. Preparing a write inside an explicit transaction also acquires admission before reading schema metadata; the permit is retained until that transaction ends. Short autocommit writes wait asynchronously for their turn; explicit write transactions retain admission until COMMIT or ROLLBACK. Writes based on an older snapshot can still conflict even when they touch unrelated rows.
 
 - `40001`: stale snapshot could not be upgraded to a writer. Roll back and retry the whole transaction.
 - `55P03`: backend writer lock busy (for example, an external process accessing the file). Retry with application-level backoff; no hidden server retries.
@@ -102,3 +102,5 @@ cargo test --release --test performance -- --ignored --nocapture
 Tests cover indexed CRUD, randomized index/scan agreement, snapshot visibility, stale-write conflicts, rollback, durability after abrupt process exit, resource limits, real-driver prepared/binary queries, portals, and schema invalidation. Process-crash tests do not emulate a storage device losing power.
 
 See [DESIGN.md](DESIGN.md) for the architecture, [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for measured results, and [docs/STATUS.md](docs/STATUS.md) for implementation scope and remaining release gates.
+
+A modified CMU BenchBase YCSB runner, reproduction steps, and measured results are available in [benchmarks/benchbase](benchmarks/benchbase/README.md).
