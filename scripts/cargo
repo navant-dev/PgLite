@@ -1,0 +1,9 @@
+#!/bin/sh
+set -eu
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+if command -v cargo >/dev/null 2>&1; then
+    exec cargo "$@"
+fi
+export CARGO_HOME="$ROOT/.toolchain/cargo"
+export RUSTUP_HOME="$ROOT/.toolchain/rustup"
+exec "$CARGO_HOME/bin/cargo" "$@"

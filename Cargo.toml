@@ -1,0 +1,26 @@
+[package]
+name = "pglite-server"
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+description = "A bounded, single-node PostgreSQL-interface database backed by SQLite WAL"
+
+[dependencies]
+async-trait = "0.1"
+bytes = "1"
+futures = "0.3"
+pgwire = { version = "=0.41.1", default-features = false, features = ["server-api-ring"] }
+rusqlite = { version = "0.38", features = ["bundled", "column_decltype", "hooks", "limits"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlparser = "=0.53.0"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "signal", "sync", "time"] }
+
+[dev-dependencies]
+tempfile = "3"
+tokio-postgres = "0.7"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
